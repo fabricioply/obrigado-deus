@@ -111,7 +111,7 @@ let media = null;         // HTMLImageElement | HTMLVideoElement
 let mediaUrl = null;
 let busy = false;
 let audioCtx, musicGain, videoGain, streamDest, musicSrc, videoSrc;
-let rafId = 0, stopFlag = false;
+let rafId = 0, stopFlag = false, previewing = false, paused = false, pausedAt = 0, t0 = 0;
 
 // ---------- música ----------
 music.addEventListener('error', () => { $('warn').style.display = 'block'; });
@@ -225,7 +225,7 @@ function duration() { return kind === 'video' ? media.duration : +$('dur').value
 
 async function run(record) {
   if (busy) return;
-  busy = true; stopFlag = false;
+  busy = true; stopFlag = false; paused = false; previewing = !record;
   $('btnPreview').disabled = $('btnExport').disabled = true;
   $('result').classList.add('hidden');
   initAudio();
@@ -261,10 +261,12 @@ async function run(record) {
   try { await music.play(); } catch (e) { setStatus('Não consegui tocar a música: ' + e.message); busy = false; enable(); return; }
   if (kind === 'video') await media.play();
   if (recorder) recorder.start(250);
+  if (previewing) { $('btnPreview').textContent = '⏸ Pausar'; $('btnPreview').disabled = false; }
 
-  const t0 = performance.now();
+  t0 = performance.now();
   await new Promise(resolve => {
     const tick = () => {
+      if (paused) { rafId = requestAnimationFrame(tick); if (stopFlag) resolve(); return; }
       const el = (performance.now() - t0) / 1000;
       drawFrame();
       $('prog').style.width = Math.min(100, el / dur * 100) + '%';
@@ -293,7 +295,7 @@ async function run(record) {
     }
   } else setStatus('Prévia finalizada.');
   $('prog').style.width = '0';
-  busy = false; enable();
+  busy = false; previewing = false; paused = false; enable();
   if (kind === 'video') media.currentTime = 0;
   drawFrame();
 }
@@ -390,11 +392,24 @@ async function exportFast() {
   drawFrame();
 }
 
-function enable() { $('btnPreview').disabled = $('btnExport').disabled = !media; }
-function stopAll() { stopFlag = true; cancelAnimationFrame(rafId); music.pause(); }
+function enable() { $('btnPreview').disabled = $('btnExport').disabled = !media; $('btnPreview').textContent = '▶ Prévia'; }
+async function togglePause() {
+  if (!paused) {
+    paused = true; pausedAt = performance.now();
+    music.pause(); if (kind === 'video') media.pause();
+    await audioCtx.suspend();
+    $('btnPreview').textContent = '▶ Continuar'; setStatus('Prévia pausada.');
+  } else {
+    await audioCtx.resume();
+    t0 += performance.now() - pausedAt;
+    music.play(); if (kind === 'video') media.play();
+    paused = false; $('btnPreview').textContent = '⏸ Pausar';
+  }
+}
+function stopAll() { stopFlag = true; paused = false; cancelAnimationFrame(rafId); music.pause(); }
 function setStatus(s) { $('status').textContent = s; }
 
-$('btnPreview').addEventListener('click', () => run(false));
+$('btnPreview').addEventListener('click', () => previewing ? togglePause() : run(false));
 $('btnExport').addEventListener('click', () => FAST ? exportFast() : run(true));
 </script>
 </body>
