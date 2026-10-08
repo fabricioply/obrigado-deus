@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gerador Obrigado Deus</title>
+<style>
+  :root { --bg:#14110f; --card:#1f1a17; --ink:#f5ecdf; --muted:#a89c8c; --gold:#e9b44c; --line:#3a312b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,Segoe UI,sans-serif; }
+  .wrap { max-width:960px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; color:var(--gold); }
+  p.sub { margin:0 0 20px; color:var(--muted); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width:760px){ .grid{ grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  .drop { border:2px dashed var(--line); border-radius:12px; padding:28px 12px; text-align:center; cursor:pointer; color:var(--muted); }
+  .drop:hover, .drop.over { border-color:var(--gold); color:var(--ink); }
+  label { display:block; font-size:.85rem; color:var(--muted); margin:14px 0 4px; }
+  select, input[type=text], input[type=range] { width:100%; }
+  select, input[type=text] { background:#2a231f; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px; font-size:1rem; }
+  .row { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+  button { background:#2a231f; color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:10px 16px; font-size:1rem; cursor:pointer; }
+  button.primary { background:var(--gold); color:#2a1d05; border-color:var(--gold); font-weight:600; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .stage { background:#000; border-radius:12px; display:flex; justify-content:center; align-items:center; min-height:280px; overflow:hidden; }
+  canvas, .stage video { max-width:100%; max-height:70vh; display:block; }
+  .check { display:flex; align-items:center; gap:8px; margin-top:12px; color:var(--ink); font-size:.95rem; }
+  #status { margin-top:12px; font-size:.9rem; color:var(--muted); min-height:1.2em; }
+  #warn { display:none; background:#3a1d1a; border:1px solid #7a3a33; padding:10px 12px; border-radius:10px; margin-bottom:16px; font-size:.9rem; }
+  .bar { height:6px; background:var(--line); border-radius:3px; margin-top:10px; overflow:hidden; }
+  .bar i { display:block; height:100%; width:0; background:var(--gold); }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🙏 Gerador Obrigado Deus</h1>
+  <p class="sub">Envie uma foto ou vídeo, a música é colocada por cima e você baixa o vídeo pronto.</p>
+
+  <div id="warn">
+    Não encontrei <b>audio/obrigado-deus.mp3</b>. Coloque o arquivo nessa pasta e abra pelo <b>iniciar.bat</b>,
+    ou escolha o mp3 agora: <input type="file" id="mp3pick" accept="audio/*">
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="drop" id="drop">Clique ou arraste uma foto / vídeo aqui</div>
+      <input type="file" id="file" accept="image/*,video/*" class="hidden">
+
+      <label>Formato</label>
+      <select id="aspect">
+        <option value="orig">Original</option>
+        <option value="9:16" selected>Vertical 9:16 (Status / Reels)</option>
+        <option value="4:5">Retrato 4:5</option>
+        <option value="1:1">Quadrado 1:1</option>
+        <option value="16:9">Horizontal 16:9</option>
+      </select>
+
+      <label>Enquadramento</label>
+      <select id="fit">
+        <option value="cover">Preencher (corta as bordas)</option>
+        <option value="contain">Mostrar inteiro (com fundo desfocado)</option>
+      </select>
+
+      <label>Texto na tela (opcional)</label>
+      <input type="text" id="caption" value="Obrigado, Deus 🙏">
+
+      <div id="photoOpts">
+        <label>Duração da foto: <b id="durLbl">30</b>s</label>
+        <input type="range" id="dur" min="5" max="120" value="30">
+      </div>
+
+      <label>Início da música: <b id="startLbl">0</b>s</label>
+      <input type="range" id="start" min="0" max="120" value="0">
+
+      <label>Volume da música: <b id="volLbl">100</b>%</label>
+      <input type="range" id="vol" min="0" max="100" value="100">
+
+      <div id="videoOpts" class="hidden">
+        <label class="check"><input type="checkbox" id="keepAudio"> Manter o som original do vídeo (mixado)</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="stage"><canvas id="cv" width="540" height="960"></canvas></div>
+      <div class="bar"><i id="prog"></i></div>
+      <div class="row">
+        <button id="btnPreview" disabled>▶ Prévia</button>
+        <button id="btnExport" class="primary" disabled>⬇ Gerar vídeo</button>
+      </div>
+      <div id="status">Escolha uma foto ou vídeo para começar.</div>
+      <div id="result" class="hidden">
+        <div class="stage" style="margin-top:12px"><video id="resVideo" controls playsinline></video></div>
+        <div class="row"><a id="dl" download><button class="primary">Baixar vídeo</button></a></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.js"></script>
+<audio id="music" src="audio/obrigado-deus.mp3" loop preload="auto"></audio>
+
+<script>
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const music = $('music');
+
+let kind = null, currentFile = null;          // 'image' | 'video'
+let media = null;         // HTMLImageElement | HTMLVideoElement
+let mediaUrl = null;
+let busy = false;
+let audioCtx, musicGain, videoGain, streamDest, musicSrc, videoSrc;
+let rafId = 0, stopFlag = false;
+
+// ---------- música ----------
+music.addEventListener('error', () => { $('warn').style.display = 'block'; });
+music.addEventListener('loadedmetadata', () => {
+  $('warn').style.display = 'none';
+  $('start').max = Math.max(0, Math.floor(music.duration) - 1);
+});
+$('mp3pick').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  music.src = URL.createObjectURL(f);
+});
+
+// ---------- controles ----------
+const bind = (id, lbl) => $(id).addEventListener('input', () => { $(lbl).textContent = $(id).value; });
+bind('dur','durLbl'); bind('start','startLbl'); bind('vol','volLbl');
+['aspect','fit','caption'].forEach(id => $(id).addEventListener('input', drawFrame));
+
+// ---------- upload ----------
+$('drop').addEventListener('click', () => $('file').click());
+['dragover','dragenter'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave','drop'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => { if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+$('file').addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+function loadFile(file) {
+  stopAll(); currentFile = file;
+  if (mediaUrl) URL.revokeObjectURL(mediaUrl);
+  mediaUrl = URL.createObjectURL(file);
+  $('result').classList.add('hidden');
+  if (file.type.startsWith('video/')) {
+    kind = 'video';
+    const v = document.createElement('video');
+    v.playsInline = true; v.preload = 'auto'; v.src = mediaUrl;
+    v.onloadeddata = () => { media = v; videoSrc = null; ready(file.name); };
+    v.onerror = () => setStatus('Não consegui abrir esse vídeo.');
+  } else if (file.type.startsWith('image/')) {
+    kind = 'image';
+    const img = new Image();
+    img.onload = () => { media = img; ready(file.name); };
+    img.onerror = () => setStatus('Não consegui abrir essa imagem.');
+    img.src = mediaUrl;
+  } else setStatus('Formato não suportado.');
+}
+
+function ready(name) {
+  $('photoOpts').classList.toggle('hidden', kind === 'video');
+  $('videoOpts').classList.toggle('hidden', kind !== 'video');
+  $('drop').textContent = '✔ ' + name + ' (clique para trocar)';
+  $('btnPreview').disabled = $('btnExport').disabled = false;
+  setStatus(kind === 'video' ? 'Vídeo carregado. Duração: ' + media.duration.toFixed(1) + 's' : 'Foto carregada.');
+  drawFrame();
+}
+
+// ---------- desenho ----------
+function canvasSize() {
+  const a = $('aspect').value;
+  const mw = kind === 'video' ? media.videoWidth : media.naturalWidth;
+  const mh = kind === 'video' ? media.videoHeight : media.naturalHeight;
+  let w, h;
+  if (a === 'orig' && mw) { const s = Math.min(1, 1080 / Math.max(mw, mh)); w = mw * s; h = mh * s; }
+  else {
+    const [x, y] = (a === 'orig' ? '9:16' : a).split(':').map(Number);
+    if (x >= y) { w = 1280; h = w * y / x; } else { h = 1280; w = h * x / y; }
+  }
+  return [Math.round(w / 2) * 2, Math.round(h / 2) * 2];
+}
+
+function drawFrame() {
+  if (!media) return;
+  const [w, h] = canvasSize();
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const mw = kind === 'video' ? media.videoWidth : media.naturalWidth;
+  const mh = kind === 'video' ? media.videoHeight : media.naturalHeight;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
+  const cover = Math.max(w / mw, h / mh), contain = Math.min(w / mw, h / mh);
+  if ($('fit').value === 'contain') {
+    // fundo desfocado
+    ctx.save(); ctx.filter = 'blur(30px) brightness(.6)';
+    ctx.drawImage(media, (w - mw * cover) / 2, (h - mh * cover) / 2, mw * cover, mh * cover);
+    ctx.restore();
+    ctx.drawImage(media, (w - mw * contain) / 2, (h - mh * contain) / 2, mw * contain, mh * contain);
+  } else {
+    ctx.drawImage(media, (w - mw * cover) / 2, (h - mh * cover) / 2, mw * cover, mh * cover);
+  }
+  const t = $('caption').value.trim();
+  if (t) {
+    const fs = Math.round(Math.min(w, h) * 0.075);
+    ctx.font = `700 ${fs}px system-ui, "Segoe UI Emoji", sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = fs * 0.3;
+    ctx.fillStyle = '#fff';
+    ctx.fillText(t, w / 2, h - fs * 2, w * 0.92);
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ---------- áudio ----------
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  streamDest = audioCtx.createMediaStreamDestination();
+  musicGain = audioCtx.createGain();
+  videoGain = audioCtx.createGain();
+  musicSrc = audioCtx.createMediaElementSource(music);
+  musicSrc.connect(musicGain);
+  [musicGain, videoGain].forEach(g => { g.connect(audioCtx.destination); g.connect(streamDest); });
+}
+
+// ---------- reprodução / gravação ----------
+function duration() { return kind === 'video' ? media.duration : +$('dur').value; }
+
+async function run(record) {
+  if (busy) return;
+  busy = true; stopFlag = false;
+  $('btnPreview').disabled = $('btnExport').disabled = true;
+  $('result').classList.add('hidden');
+  initAudio();
+  await audioCtx.resume();
+
+  const dur = duration();
+  const vol = $('vol').value / 100;
+  const t = audioCtx.currentTime;
+  musicGain.gain.cancelScheduledValues(t);
+  musicGain.gain.setValueAtTime(vol, t);
+  if (dur > 3) { // fade-out final de 2s
+    musicGain.gain.setValueAtTime(vol, t + dur - 2);
+    musicGain.gain.linearRampToValueAtTime(0, t + dur);
+  }
+  const keep = kind === 'video' && $('keepAudio').checked;
+  if (kind === 'video') {
+    if (!videoSrc) { videoSrc = audioCtx.createMediaElementSource(media); videoSrc.connect(videoGain); }
+    videoGain.gain.value = keep ? 1 : 0;
+    media.currentTime = 0;
+  }
+  music.currentTime = Math.min(+$('start').value, music.duration || 0);
+
+  let recorder, chunks = [], mime = '';
+  if (record) {
+    const stream = cv.captureStream(30);
+    streamDest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
+    mime = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+      .find(m => MediaRecorder.isTypeSupported(m)) || '';
+    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
+    recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+  }
+
+  try { await music.play(); } catch (e) { setStatus('Não consegui tocar a música: ' + e.message); busy = false; enable(); return; }
+  if (kind === 'video') await media.play();
+  if (recorder) recorder.start(250);
+
+  const t0 = performance.now();
+  await new Promise(resolve => {
+    const tick = () => {
+      const el = (performance.now() - t0) / 1000;
+      drawFrame();
+      $('prog').style.width = Math.min(100, el / dur * 100) + '%';
+      setStatus((record ? 'Gravando… ' : 'Prévia… ') + el.toFixed(1) + ' / ' + dur.toFixed(1) + 's');
+      const done = stopFlag || el >= dur || (kind === 'video' && media.ended);
+      if (done) return resolve();
+      rafId = requestAnimationFrame(tick);
+    };
+    tick();
+  });
+
+  music.pause();
+  if (kind === 'video') media.pause();
+  musicGain.gain.cancelScheduledValues(audioCtx.currentTime);
+
+  if (recorder) {
+    await new Promise(r => { recorder.onstop = r; recorder.stop(); });
+    if (!stopFlag) {
+      const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+      const blob = new Blob(chunks, { type: mime || 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      $('resVideo').src = url;
+      $('dl').href = url; $('dl').download = 'obrigado-deus.' + ext;
+      $('result').classList.remove('hidden');
+      setStatus('Pronto! Vídeo gerado (' + ext + ').');
+    }
+  } else setStatus('Prévia finalizada.');
+  $('prog').style.width = '0';
+  busy = false; enable();
+  if (kind === 'video') media.currentTime = 0;
+  drawFrame();
+}
+
+
+// ---------- exportação rápida (WebCodecs, sem gravar em tempo real) ----------
+const FAST = !!(window.VideoEncoder && window.AudioEncoder && window.Mp4Muxer);
+const SR = 44100;
+
+async function mixAudio(dur) {
+  const ac = new OfflineAudioContext(2, Math.ceil(dur * SR), SR);
+  const dec = async buf => new OfflineAudioContext(2, 1, SR).decodeAudioData(buf);
+  const mb = await dec(await (await fetch(music.currentSrc)).arrayBuffer());
+  const src = ac.createBufferSource(); src.buffer = mb;
+  const off = Math.min(+$('start').value, Math.max(0, mb.duration - 1));
+  src.loop = true; src.loopStart = off; src.loopEnd = mb.duration;
+  const g = ac.createGain(), vol = $('vol').value / 100;
+  g.gain.setValueAtTime(vol, 0);
+  if (dur > 3) { g.gain.setValueAtTime(vol, dur - 2); g.gain.linearRampToValueAtTime(0, dur); }
+  src.connect(g); g.connect(ac.destination); src.start(0, off);
+  if (kind === 'video' && $('keepAudio').checked) {
+    try {
+      const vb = await dec(await currentFile.arrayBuffer());
+      const vs = ac.createBufferSource(); vs.buffer = vb; vs.connect(ac.destination); vs.start(0);
+    } catch (e) { /* vídeo sem áudio */ }
+  }
+  return ac.startRendering();
+}
+
+const seek = t => new Promise(r => { media.onseeked = () => r(); media.currentTime = t; });
+const idle = () => new Promise(r => setTimeout(r, 0));
+
+async function exportFast() {
+  if (busy) return;
+  busy = true; stopAll(); stopFlag = false;
+  $('btnPreview').disabled = $('btnExport').disabled = true;
+  $('result').classList.add('hidden');
+  try {
+    const dur = duration();
+    drawFrame();
+    const w = cv.width, h = cv.height;
+    const fps = kind === 'video' ? 30 : 15;
+    const total = Math.floor(dur * fps);
+    const muxer = new Mp4Muxer.Muxer({
+      target: new Mp4Muxer.ArrayBufferTarget(),
+      video: { codec: 'avc', width: w, height: h },
+      audio: { codec: 'aac', numberOfChannels: 2, sampleRate: SR },
+      fastStart: 'in-memory'
+    });
+    let err = null;
+    const venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: e => err = e });
+    venc.configure({ codec: 'avc1.640032', width: w, height: h, bitrate: 6_000_000, framerate: fps });
+    const aenc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: e => err = e });
+    aenc.configure({ codec: 'mp4a.40.2', sampleRate: SR, numberOfChannels: 2, bitrate: 128000 });
+
+    setStatus('Misturando áudio…');
+    const ab = await mixAudio(dur);
+    const L = ab.getChannelData(0), R = ab.getChannelData(1), CH = 4096;
+    for (let p = 0; p < ab.length; p += CH) {
+      const n = Math.min(CH, ab.length - p), d = new Float32Array(n * 2);
+      d.set(L.subarray(p, p + n), 0); d.set(R.subarray(p, p + n), n);
+      const ad = new AudioData({ format: 'f32-planar', sampleRate: SR, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round(p / SR * 1e6), data: d });
+      aenc.encode(ad); ad.close();
+    }
+
+    const t0 = performance.now();
+    for (let i = 0; i < total; i++) {
+      if (err) throw err;
+      if (stopFlag) throw new Error('cancelado');
+      if (kind === 'video') await seek(Math.min(i / fps, media.duration - 0.001));
+      drawFrame();
+      const f = new VideoFrame(cv, { timestamp: Math.round(i * 1e6 / fps) });
+      venc.encode(f, { keyFrame: i % (fps * 2) === 0 }); f.close();
+      while (venc.encodeQueueSize > 8) await idle();
+      if (i % 5 === 0) {
+        $('prog').style.width = (i / total * 100) + '%';
+        setStatus('Gerando… ' + Math.round(i / total * 100) + '%');
+        await idle();
+      }
+    }
+    await venc.flush(); await aenc.flush();
+    muxer.finalize();
+    const url = URL.createObjectURL(new Blob([muxer.target.buffer], { type: 'video/mp4' }));
+    $('resVideo').src = url; $('dl').href = url; $('dl').download = 'obrigado-deus.mp4';
+    $('result').classList.remove('hidden');
+    setStatus('Pronto em ' + ((performance.now() - t0) / 1000).toFixed(1) + 's! (mp4)');
+  } catch (e) {
+    setStatus('Erro na exportação rápida: ' + e.message + ' — tentando gravar em tempo real…');
+    busy = false; enable(); return run(true);
+  }
+  $('prog').style.width = '0';
+  busy = false; enable();
+  if (kind === 'video') media.currentTime = 0;
+  drawFrame();
+}
+
+function enable() { $('btnPreview').disabled = $('btnExport').disabled = !media; }
+function stopAll() { stopFlag = true; cancelAnimationFrame(rafId); music.pause(); }
+function setStatus(s) { $('status').textContent = s; }
+
+$('btnPreview').addEventListener('click', () => run(false));
+$('btnExport').addEventListener('click', () => FAST ? exportFast() : run(true));
+</script>
+</body>
+</html>
