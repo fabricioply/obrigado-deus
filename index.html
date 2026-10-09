@@ -92,7 +92,7 @@
       <div id="status">Escolha uma foto ou vídeo para começar.</div>
       <div id="result" class="hidden">
         <div class="stage" style="margin-top:12px"><video id="resVideo" controls playsinline></video></div>
-        <div class="row"><a id="dl" download><button class="primary">Baixar vídeo</button></a></div>
+        <div class="row"><button id="dl" class="primary">Baixar vídeo</button></div>
       </div>
     </div>
   </div>
@@ -288,9 +288,7 @@ async function run(record) {
       const ext = mime.includes('mp4') ? 'mp4' : 'webm';
       const blob = new Blob(chunks, { type: mime || 'video/webm' });
       const url = URL.createObjectURL(blob);
-      $('resVideo').src = url;
-      $('dl').href = url; $('dl').download = 'obrigado-deus.' + ext;
-      $('result').classList.remove('hidden');
+      showResult(blob, ext);
       setStatus('Pronto! Vídeo gerado (' + ext + ').');
     }
   } else setStatus('Prévia finalizada.');
@@ -378,9 +376,7 @@ async function exportFast() {
     }
     await venc.flush(); await aenc.flush();
     muxer.finalize();
-    const url = URL.createObjectURL(new Blob([muxer.target.buffer], { type: 'video/mp4' }));
-    $('resVideo').src = url; $('dl').href = url; $('dl').download = 'obrigado-deus.mp4';
-    $('result').classList.remove('hidden');
+    showResult(new Blob([muxer.target.buffer], { type: 'video/mp4' }), 'mp4');
     setStatus('Pronto em ' + ((performance.now() - t0) / 1000).toFixed(1) + 's! (mp4)');
   } catch (e) {
     setStatus('Erro na exportação rápida: ' + e.message + ' — tentando gravar em tempo real…');
@@ -391,6 +387,27 @@ async function exportFast() {
   if (kind === 'video') media.currentTime = 0;
   drawFrame();
 }
+
+let outBlob = null, outName = '';
+function showResult(blob, ext) {
+  outBlob = blob; outName = 'obrigado-deus.' + ext;
+  $('resVideo').src = URL.createObjectURL(blob);
+  $('result').classList.remove('hidden');
+}
+const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+$('dl').addEventListener('click', async () => {
+  if (!outBlob) return;
+  const file = new File([outBlob], outName, { type: outBlob.type || 'video/mp4' });
+  // iPhone: o atributo download não salva na galeria; a folha de compartilhamento tem "Salvar Vídeo"
+  if (IOS && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(outBlob); a.download = outName;
+  document.body.appendChild(a); a.click(); a.remove();
+  if (IOS) setStatus('Se não baixou, segure o dedo sobre o vídeo acima e escolha "Compartilhar" > "Salvar Vídeo".');
+});
 
 function enable() { $('btnPreview').disabled = $('btnExport').disabled = !media; $('btnPreview').textContent = '▶ Prévia'; }
 async function togglePause() {
