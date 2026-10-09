@@ -345,9 +345,14 @@ async function exportFast() {
     });
     let err = null;
     const venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: e => err = e });
-    venc.configure({ codec: 'avc1.640032', width: w, height: h, bitrate: 6_000_000, framerate: fps });
+    // formato explícito: o Safari/iOS pode emitir Annex B (H.264) e ADTS (AAC), que corrompem o MP4
+    const vcfg = { codec: 'avc1.640028', width: w, height: h, bitrate: 6_000_000, framerate: fps, avc: { format: 'avc' } };
+    if (!(await VideoEncoder.isConfigSupported(vcfg)).supported) throw new Error('codec de vídeo não suportado');
+    venc.configure(vcfg);
     const aenc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: e => err = e });
-    aenc.configure({ codec: 'mp4a.40.2', sampleRate: SR, numberOfChannels: 2, bitrate: 128000 });
+    const acfg = { codec: 'mp4a.40.2', sampleRate: SR, numberOfChannels: 2, bitrate: 128000, aac: { format: 'aac' } };
+    if (!(await AudioEncoder.isConfigSupported(acfg)).supported) throw new Error('codec de áudio não suportado');
+    aenc.configure(acfg);
 
     setStatus('Misturando áudio…');
     const ab = await mixAudio(dur);
@@ -375,6 +380,7 @@ async function exportFast() {
       }
     }
     await venc.flush(); await aenc.flush();
+    if (err) throw err;
     muxer.finalize();
     showResult(new Blob([muxer.target.buffer], { type: 'video/mp4' }), 'mp4');
     setStatus('Pronto em ' + ((performance.now() - t0) / 1000).toFixed(1) + 's! (mp4)');
