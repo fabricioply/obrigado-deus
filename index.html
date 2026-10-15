@@ -48,6 +48,12 @@
       <div class="drop" id="drop">Clique ou arraste uma foto / vídeo aqui</div>
       <input type="file" id="file" accept="image/*,video/*" class="hidden">
 
+      <label>Música</label>
+      <select id="song">
+        <option value="audio/obrigado-deus.mp3" data-cap="Obrigado, Deus 🙏">Obrigado Deus</option>
+        <option value="audio/nao-ha-ferrolho.mp3" data-cap="Não há Ferrolho 🙏">Não há Ferrolho</option>
+      </select>
+
       <label>Formato</label>
       <select id="aspect">
         <option value="orig">Original</option>
@@ -76,6 +82,12 @@
 
       <label>Volume da música: <b id="volLbl">100</b>%</label>
       <input type="range" id="vol" min="0" max="300" value="100">
+
+      <label class="check"><input type="checkbox" id="blow"> 💥 Estourado</label>
+      <select id="blowLvl" class="hidden">
+        <option value="500">500%</option>
+        <option value="1000">1000%</option>
+      </select>
 
       <div id="videoOpts" class="hidden">
         <label class="check"><input type="checkbox" id="keepAudio"> Manter o som original do vídeo (mixado)</label>
@@ -123,6 +135,24 @@ $('mp3pick').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
   music.src = URL.createObjectURL(f);
 });
+
+// ---------- escolha da música ----------
+let lastCap = $('song').selectedOptions[0].dataset.cap;
+$('song').addEventListener('change', () => {
+  const o = $('song').selectedOptions[0];
+  if ($('caption').value === lastCap) $('caption').value = o.dataset.cap;
+  lastCap = o.dataset.cap;
+  $('start').value = 0; $('startLbl').textContent = 0;
+  music.src = o.value;
+  drawFrame();
+});
+
+// ---------- estourado ----------
+$('blow').addEventListener('change', () => {
+  $('blowLvl').classList.toggle('hidden', !$('blow').checked);
+  $('vol').disabled = $('blow').checked;
+});
+const musicVolume = () => $('blow').checked ? $('blowLvl').value / 100 : $('vol').value / 100;
 
 // ---------- controles ----------
 const bind = (id, lbl) => $(id).addEventListener('input', () => { $(lbl).textContent = $(id).value; });
@@ -232,7 +262,7 @@ async function run(record) {
   await audioCtx.resume();
 
   const dur = duration();
-  const vol = $('vol').value / 100;
+  const vol = musicVolume();
   const t = audioCtx.currentTime;
   musicGain.gain.cancelScheduledValues(t);
   musicGain.gain.setValueAtTime(vol, t);
@@ -310,7 +340,7 @@ async function mixAudio(dur) {
   const src = ac.createBufferSource(); src.buffer = mb;
   const off = Math.min(+$('start').value, Math.max(0, mb.duration - 1));
   src.loop = true; src.loopStart = off; src.loopEnd = mb.duration;
-  const g = ac.createGain(), vol = $('vol').value / 100;
+  const g = ac.createGain(), vol = musicVolume();
   g.gain.setValueAtTime(vol, 0);
   if (dur > 3) { g.gain.setValueAtTime(vol, dur - 2); g.gain.linearRampToValueAtTime(0, dur); }
   src.connect(g); g.connect(ac.destination); src.start(0, off);
